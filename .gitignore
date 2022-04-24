@@ -1,0 +1,17 @@
+data/
+checkpoint/
+*.pyc
+.vscode/
+*.log
+*.pth
+data/
+log/
+*.npy
+*.pkl
+*.mp4
+*.whl
+*.tar.gz
+*.zip
+*.pyc
+*.log
+__pycache__/
