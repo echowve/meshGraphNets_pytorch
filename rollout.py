@@ -12,7 +12,7 @@ from tqdm import tqdm
 import os
 
 
-parser = argparse.ArgumentParser(description='Implementation of GNS')
+parser = argparse.ArgumentParser(description='Implementation of MeshGraphNets')
 parser.add_argument("--gpu",
                     type=int,
                     default=0,
@@ -38,7 +38,7 @@ def rollout_error(predicteds, targets):
     squared_diff = np.square(predicteds - targets).reshape(number_len, -1)
     loss = np.sqrt(np.cumsum(np.mean(squared_diff, axis=1), axis=0)/np.arange(1, number_len+1))
 
-    for show_step in range(0, 1000000, 1):
+    for show_step in range(0, 1000000, 50):
         if show_step <number_len:
             print('testing rmse  @ step %d loss: %.2e'%(show_step, loss[show_step]))
         else: break
@@ -67,11 +67,11 @@ def rollout(model, dataloader, rollout_index=1):
             mask = torch.logical_not(mask)
 
         if predicted_velocity is not None:
-            graph.x[:, 1:3] = predicted_velocity
+            graph.x[:, 1:3] = predicted_velocity.detach()
         
         next_v = graph.y
         predicted_velocity = model(graph, velocity_sequence_noise=None)
-        # predicted_velocity = torch.where(mask, predicted_velocity, next_v)
+
         predicted_velocity[mask] = next_v[mask]
 
         predicteds.append(predicted_velocity.detach().cpu().numpy())

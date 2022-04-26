@@ -9,7 +9,7 @@ class FPC(IterableDataset):
 
     def __init__(self, dataset_dir, split='train', max_epochs=1):
         
-        self.open_tra_num = 10
+        self.open_tra_num = 100
 
         dataset_dir = osp.join(dataset_dir, split+'.h5')
         self.dataset_dir = dataset_dir
@@ -36,16 +36,19 @@ class FPC(IterableDataset):
         #     print('max_epcho change to 1 due to in %s mode'%split)
         self.max_epochs = max_epochs
 
-
         print('Dataset '+  dataset_dir + ' Initilized')
         
     
     def open_tra(self):
         while(len(self.opened_tra) < self.open_tra_num):
+
             tra_index = self.datasets[self.tra_index]
-            self.opened_tra.append(tra_index)
-            self.opened_tra_readed_index[tra_index] = -1
-            self.opened_tra_readed_random_index[tra_index] = np.random.permutation(self.tra_len - 2)
+
+            if tra_index not in self.opened_tra:
+                self.opened_tra.append(tra_index)
+                self.opened_tra_readed_index[tra_index] = -1
+                self.opened_tra_readed_random_index[tra_index] = np.random.permutation(self.tra_len - 2)
+
             self.tra_index += 1
 
             if self.check_if_epcho_end():
@@ -59,7 +62,12 @@ class FPC(IterableDataset):
                 to_del.append(tra)
         for tra in to_del:
             self.opened_tra.remove(tra)
-            del self.opened_tra_readed_index[tra]
+            try:
+                del self.opened_tra_readed_index[tra]
+                del  self.opened_tra_readed_random_index[tra]
+            except Exception as e:
+                print(e)
+                
 
 
     def shuffle_file(self):
@@ -147,11 +155,11 @@ class FPC_ROLLOUT(IterableDataset):
         self.file_handle = h5py.File(dataset_dir, "r")
         self.data_keys =  ("pos", "node_type", "velocity", "cells", "pressure")
         self.time_iterval = 0.01
-        self.shuffle_file()
+        self.load_dataset()
+        
 
-    def shuffle_file(self):
+    def load_dataset(self):
         datasets = list(self.file_handle.keys())
-        np.random.shuffle(datasets)
         self.datasets = datasets
 
     def change_file(self, file_index):

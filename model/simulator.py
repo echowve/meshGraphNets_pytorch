@@ -84,8 +84,8 @@ class Simulator(nn.Module):
         for k in keys:
             v = dicts[k]
             for para, value in v.items():
-                var = k + '.' + para
-                setattr(self, var, value)
+                object = eval('self.'+k)
+                setattr(object, para, value)
 
         print("Simulator model loaded checkpoint %s"%ckpdir)
 

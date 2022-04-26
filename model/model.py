@@ -30,30 +30,31 @@ class Encoder(nn.Module):
         return Data(x=node_, edge_attr=edge_, edge_index=graph.edge_index)
 
 
+
 class GnBlock(nn.Module):
 
-    def __init__(self,
-                 hidden_size=128):
+    def __init__(self, hidden_size=128):
 
         super(GnBlock, self).__init__()
 
+
         eb_input_dim = 3 * hidden_size
         nb_input_dim = 2 * hidden_size
-
-        self.nb_custom_func = build_mlp(nb_input_dim, hidden_size, hidden_size)
-        self.eb_custom_func = build_mlp(eb_input_dim, hidden_size, hidden_size)
+        nb_custom_func = build_mlp(nb_input_dim, hidden_size, hidden_size)
+        eb_custom_func = build_mlp(eb_input_dim, hidden_size, hidden_size)
         
-        self.eb_module = EdgeBlock(custom_func=self.eb_custom_func)
-        self.nb_module = NodeBlock(custom_func=self.nb_custom_func)
+        self.eb_module = EdgeBlock(custom_func=eb_custom_func)
+        self.nb_module = NodeBlock(custom_func=nb_custom_func)
 
     def forward(self, graph):
-        
+    
         graph_last = copy_geometric_data(graph)
-        graph1 = self.eb_module(graph)
-        graph2 = self.nb_module(graph1)
-        x = graph_last.x + graph2.x
-        edge_attr = graph_last.edge_attr + graph2.edge_attr
+        graph = self.eb_module(graph)
+        graph = self.nb_module(graph)
+        edge_attr = graph_last.edge_attr + graph.edge_attr
+        x = graph_last.x + graph.x
         return Data(x=x, edge_attr=edge_attr, edge_index=graph.edge_index)
+
 
 
 class Decoder(nn.Module):
