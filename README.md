@@ -11,12 +11,12 @@ Some code of this repository refer to [Differentiable Physics-informed Graph Net
 
 ## Authors
 -----------------------
-  - Longxiang Jiang
-  - Hao Zhang
-  - Xinkun Chu
-  - Mideng Qian
-  - Luxiong Li
-  - Liyuan Wang
+  - Jiang
+  - Zhang
+  - Chu
+  - Qian
+  - Li
+  - Wang
 
 
 ## Requirements
