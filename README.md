@@ -59,5 +59,4 @@ Some code of this repository refer to [Differentiable Physics-informed Graph Net
 
 ## Contact me
 
-:email: Longxiang Jiang:\
-[jianglx@whu.edu.cn](jianglx@whu.edu.cn)
+:email: [jianglx@whu.edu.cn](jianglx@whu.edu.cn)
