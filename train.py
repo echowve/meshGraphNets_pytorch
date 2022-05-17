@@ -8,10 +8,11 @@ from torch_geometric.loader import DataLoader
 import torch_geometric.transforms as T
 
 dataset_dir = "/home/jlx/dataset/data"
-batch_size = 50
+batch_size = 8
 noise_std=2e-2
 print_batch = 10
 save_batch = 200
+warmup_batch = 1000
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 simulator = Simulator(message_passing_num=15, node_input_size=11, edge_input_size=3, device=device)
@@ -35,9 +36,10 @@ def train(model:Simulator, dataloader, optimizer):
 
         loss = torch.mean(errors)
 
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        if batch_index > warmup_batch:
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
         t2 = time.time()
         samples_per_second = 1/(t2 - t1) * batch_size
@@ -52,6 +54,6 @@ def train(model:Simulator, dataloader, optimizer):
 if __name__ == '__main__':
 
     dataset_fpc = FPC(dataset_dir=dataset_dir, split='train', max_epochs=50)
-    train_loader = DataLoader(dataset=dataset_fpc, batch_size=batch_size)
+    train_loader = DataLoader(dataset=dataset_fpc, batch_size=batch_size, num_workers=4, prefetch_factor=2)
     transformer = T.Compose([T.FaceToEdge(), T.Cartesian(norm=False), T.Distance(norm=False)])
     train(simulator, train_loader, optimizer)
