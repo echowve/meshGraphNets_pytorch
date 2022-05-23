@@ -4,21 +4,21 @@ import os.path as osp
 import h5py
 from torch_geometric.data import Data
 import torch
+import math
+import time
 
-class FPC(IterableDataset):
+class FPCBase():
 
-    def __init__(self, dataset_dir, split='train', max_epochs=1):
-        
-        self.open_tra_num = 100
+    def __init__(self, max_epochs=1, files=None):
 
-        dataset_dir = osp.join(dataset_dir, split+'.h5')
-        self.dataset_dir = dataset_dir
-        assert os.path.isfile(dataset_dir), '%s not exist' % dataset_dir
-        self.file_handle = h5py.File(dataset_dir, "r")
+
+        self.open_tra_num = 10
+        self.file_handle=files
         self.shuffle_file()
 
         self.data_keys =  ("pos", "node_type", "velocity", "cells", "pressure")
         self.out_keys = list(self.data_keys)  + ['time']
+
         self.tra_index = 0
         self.epcho_num=1
         self.tra_readed_index = -1
@@ -30,14 +30,9 @@ class FPC(IterableDataset):
         self.opened_tra = []
         self.opened_tra_readed_index = {}
         self.opened_tra_readed_random_index = {}
-
-        # if split!='train' and max_epochs!=1:
-        #     max_epochs=1
-        #     print('max_epcho change to 1 due to in %s mode'%split)
+        self.tra_data = {}
         self.max_epochs = max_epochs
 
-        print('Dataset '+  dataset_dir + ' Initilized')
-        
     
     def open_tra(self):
         while(len(self.opened_tra) < self.open_tra_num):
@@ -64,7 +59,8 @@ class FPC(IterableDataset):
             self.opened_tra.remove(tra)
             try:
                 del self.opened_tra_readed_index[tra]
-                del  self.opened_tra_readed_random_index[tra]
+                del self.opened_tra_readed_random_index[tra]
+                del self.tra_data[tra]
             except Exception as e:
                 print(e)
                 
@@ -81,7 +77,7 @@ class FPC(IterableDataset):
         self.epcho_num = self.epcho_num + 1
 
     def check_if_epcho_end(self):
-        if self.tra_index >= len(self.datasets):
+        if self.tra_index >= len(self.file_handle):
             return True
         return False
 
@@ -114,7 +110,7 @@ class FPC(IterableDataset):
 
 
     def __next__(self):
-        
+   
         self.check_and_close_tra()
         self.open_tra()
         
@@ -122,7 +118,11 @@ class FPC(IterableDataset):
             raise StopIteration
 
         selected_tra = np.random.choice(self.opened_tra)
-        data = self.file_handle[selected_tra]
+
+        data = self.tra_data.get(selected_tra, None)
+        if data is None:
+            data = self.file_handle[selected_tra]
+            self.tra_data[selected_tra] = data
 
         selected_tra_readed_index = self.opened_tra_readed_index[selected_tra]
         selected_frame = self.opened_tra_readed_random_index[selected_tra][selected_tra_readed_index+1]
@@ -140,10 +140,40 @@ class FPC(IterableDataset):
         datas.append(np.array([self.time_iterval * selected_frame], dtype=np.float32))
         #("pos", "node_type", "velocity", "cells", "pressure", "time")
         g = self.datas_to_graph(datas)
+  
         return g
 
     def __iter__(self):
         return self
+
+
+class FPC(IterableDataset):
+    def __init__(self, max_epochs, dataset_dir, split='train') -> None:
+
+        super().__init__()
+
+        dataset_dir = osp.join(dataset_dir, split+'.h5')
+        self.max_epochs= max_epochs
+        self.dataset_dir = dataset_dir
+        assert os.path.isfile(dataset_dir), '%s not exist' % dataset_dir
+        self.file_handle = h5py.File(dataset_dir, "r")
+        print('Dataset '+  self.dataset_dir + ' Initilized')
+
+    def __iter__(self):
+        worker_info = torch.utils.data.get_worker_info()
+        if worker_info is None:
+            iter_start = 0
+            iter_end = len(self.file_handle)
+        else:
+            per_worker = int(math.ceil(len(self.file_handle)/float(worker_info.num_workers)))
+            worker_id = worker_info.id
+            iter_start = worker_id * per_worker
+            iter_end = min(iter_start + per_worker, len(self.file_handle))
+
+        keys = list(self.file_handle.keys())
+        keys = keys[iter_start:iter_end]
+        files = {k: self.file_handle[k] for k in keys}
+        return FPCBase(max_epochs=self.max_epochs, files=files)
 
 
 class FPC_ROLLOUT(IterableDataset):
