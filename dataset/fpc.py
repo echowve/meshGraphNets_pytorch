@@ -216,7 +216,7 @@ class FPC_ROLLOUT(IterableDataset):
         datas.append(np.array([self.time_iterval * selected_frame], dtype=np.float32))
 
         self.cur_tragecity_index += 1
-        g = FPCBase.datas_to_graph(datas, edge_index=self.edge_index)
+        g = FPCBase.datas_to_graph(datas)
         # self.edge_index = g.edge_index
         return g
 
