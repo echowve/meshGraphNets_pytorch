@@ -82,11 +82,7 @@ class FPCBase():
         return False
 
     @staticmethod
-    def datas_to_graph(datas, edge_index=None):
-
-        # if edge_index is None: # rollout时第二步不为None，用于避免重复计算
-        #     edge_index =  triangles_to_edges_numpy(datas[3])
-        #     edge_index = torch.as_tensor(edge_index, dtype=torch.long)
+    def datas_to_graph(datas):
 
         time_vector = np.ones((datas[0].shape[0], 1))*datas[5]
         node_attr = np.hstack((datas[1], datas[2][0], datas[4][0], time_vector))
@@ -220,7 +216,7 @@ class FPC_ROLLOUT(IterableDataset):
         datas.append(np.array([self.time_iterval * selected_frame], dtype=np.float32))
 
         self.cur_tragecity_index += 1
-        g = FPC.datas_to_graph(datas, edge_index=self.edge_index)
+        g = FPCBase.datas_to_graph(datas, edge_index=self.edge_index)
         # self.edge_index = g.edge_index
         return g
 
