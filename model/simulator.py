@@ -4,35 +4,38 @@ import torch
 from torch_geometric.data import Data
 from utils import normalization
 import os
+from utils.noise import get_velocity_noise
 
 
 
 class Simulator(nn.Module):
 
-    def __init__(self, message_passing_num, node_input_size, edge_input_size, device, model_dir='checkpoint/simulator.pth') -> None:
+    # def __init__(self, message_passing_num, node_input_size, edge_input_size, device, model_dir='checkpoint/simulator.pth') -> None:
+    def __init__(self, message_passing_num, device, model_dir='checkpoint/simulator.pth') -> None:
+
         super(Simulator, self).__init__()
 
-        self.node_input_size =  node_input_size
-        self.edge_input_size = edge_input_size
+        self.device = device
+        # Updated: no node_input_size or edge_input_size needed
+        # self.node_input_size =  node_input_size
+        # self.edge_input_size = edge_input_size
         self.model_dir = model_dir
-        self.model = EncoderProcesserDecoder(message_passing_num=message_passing_num, node_input_size=node_input_size, edge_input_size=edge_input_size).to(device)
+        # self.model = EncoderProcesserDecoder(message_passing_num=message_passing_num, node_input_size=node_input_size, edge_input_size=edge_input_size).to(device)
+        self.model = EncoderProcesserDecoder(message_passing_num=message_passing_num).to(device)
         self._output_normalizer = normalization.Normalizer(size=2, name='output_normalizer', device=device)
-        self._node_normalizer = normalization.Normalizer(size=node_input_size, name='node_normalizer', device=device)
+        # self._node_normalizer = normalization.Normalizer(size=node_input_size, name='node_normalizer', device=device)
+        # _node_normalizer will be initialized dynamically based on graph.x in forward
+        self._node_normalizer = None
         # self._edge_normalizer = normalization.Normalizer(size=edge_input_size, name='edge_normalizer', device=device)
 
         print('Simulator model initialized')
 
-    def update_node_attr(self, frames, types:torch.Tensor):
-        node_feature = []
-
-        node_feature.append(frames) #velocity
-        node_type = torch.squeeze(types.long())
-        one_hot = torch.nn.functional.one_hot(node_type, 9)
-        node_feature.append(one_hot)
-        node_feats = torch.cat(node_feature, dim=1)
+    def update_node_attr(self, frames, types: torch.Tensor):
+        # frames here is graph.x[:, 1:] (velocity+pressure+time)
+        node_feats = torch.cat([types, frames], dim=1)  # [N, 6]
         attr = self._node_normalizer(node_feats, self.training)
-
         return attr
+
 
     def velocity_to_accelation(self, noised_frames, next_velocity):
 
@@ -40,23 +43,32 @@ class Simulator(nn.Module):
         return acc_next
 
 
-    def forward(self, graph:Data, velocity_sequence_noise):
-        
-        if self.training:
-            
-            node_type = graph.x[:, 0:1]
-            frames = graph.x[:, 1:3]
-            target = graph.y
+    def forward(self, graph:Data):
+        print("graph.x.shape:", graph.x.shape)
 
-            noised_frames = frames + velocity_sequence_noise
-            node_attr = self.update_node_attr(noised_frames, node_type)
+        if self.training:
+            node_type = graph.x[:, 0:1]          # [N,1]
+            velocity = graph.x[:, 1:4]           # [N,3]
+            pressure_time = graph.x[:, 4:]       # [N,2]
+
+            # add noise only to velocity
+            velocity_noise = get_velocity_noise(graph, device=graph.x.device)
+            noised_velocity = velocity + velocity_noise
+
+            # combine back to form node features for the model
+            frames = torch.cat([noised_velocity, pressure_time], dim=1)  # [N,5]
+            node_attr = self.update_node_attr(frames, node_type)
             graph.x = node_attr
+
+            # now pass through your GNN
             predicted = self.model(graph)
 
-            target_acceration = self.velocity_to_accelation(noised_frames, target)
-            target_acceration_normalized = self._output_normalizer(target_acceration, self.training)
+            # compute target acceleration only from velocity
+            target = graph.y
+            target_acceleration = self.velocity_to_accelation(noised_velocity, target)
+            target_acceleration_normalized = self._output_normalizer(target_acceleration, self.training)
 
-            return predicted, target_acceration_normalized
+            return predicted, target_acceleration_normalized
 
         else:
 

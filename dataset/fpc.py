@@ -12,7 +12,7 @@ class FPCBase():
     def __init__(self, max_epochs=1, files=None):
 
 
-        self.open_tra_num = 10
+        self.open_tra_num = 1 # number of trajectories opened in memory (less than no of cases)
         self.file_handle=files
         self.shuffle_file()
 
@@ -24,7 +24,7 @@ class FPCBase():
         self.tra_readed_index = -1
 
         # dataset attr
-        self.tra_len = 600
+        self.tra_len = 10 # number of frames per trajectory
         self.time_iterval = 0.01
 
         self.opened_tra = []
@@ -83,26 +83,56 @@ class FPCBase():
 
     @staticmethod
     def datas_to_graph(datas):
+        import itertools
+        time_vector = np.ones((datas[0].shape[0], 1)) * datas[5]
+        node_attr = np.hstack((
+            datas[1],
+            datas[2][0],
+            datas[4][0].reshape(-1,1),
+            time_vector
+        ))
 
-        time_vector = np.ones((datas[0].shape[0], 1))*datas[5]
-        node_attr = np.hstack((datas[1], datas[2][0], datas[4][0], time_vector))
-        "node_type, cur_v, pressure, time"
-        crds = torch.as_tensor(datas[0], dtype=torch.float)
-        # senders = edge_index[0].numpy()
-        # receivers = edge_index[1].numpy()
-        # crds_diff = crds[senders] - crds[receivers]
-        # crds_norm = np.linalg.norm(crds_diff, axis=1, keepdims=True)
-        # edge_attr = np.concatenate((crds_diff, crds_norm), axis=1)
-
-        target = datas[2][1]
-        #node_type, cur_v, pressure, time
+        crds = torch.as_tensor(datas[0], dtype=torch.float32)
+        target = torch.from_numpy(datas[2][1])
         node_attr = torch.as_tensor(node_attr, dtype=torch.float32)
-        # edge_attr = torch.from_numpy(edge_attr)
-        target = torch.from_numpy(target)
-        face = torch.as_tensor(datas[3].T, dtype=torch.long)
-        g = Data(x=node_attr, face=face, y=target, pos=crds)
-        # g = Data(x=node_attr, edge_index=edge_index, edge_attr=edge_attr, y=target, pos=crds)
+
+        # Build edges from tetrahedral cells
+        cells = datas[3]  # (num_cells, 4)
+        # Fix: make sure cells is 2D
+        if cells.ndim == 1:
+            cells = cells.reshape(1, -1)  # shape (1, 4) for a single tetrahedron
+            edge_index_list = []
+        for tet in cells:
+            for i, j in itertools.combinations(tet, 2):
+                edge_index_list.append([i, j])
+                edge_index_list.append([j, i])
+        edge_index = torch.tensor(edge_index_list, dtype=torch.long).t().contiguous()
+
+        g = Data(
+            x=node_attr,
+            pos=crds,
+            y=target,
+            edge_index=edge_index
+        )
+
+        # Optional: edge attributes
+        row, col = edge_index
+        edge_attr = crds[row] - crds[col]
+        edge_length = torch.norm(edge_attr, dim=1, keepdim=True)
+        g.edge_attr = torch.cat([edge_attr, edge_length], dim=1)
+
         return g
+
+
+    @staticmethod
+    def tetra_to_edges(cells: torch.Tensor) -> torch.Tensor:
+        """Generate undirected edges from tetrahedral cell connectivity."""
+        pairs = torch.tensor([[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]], dtype=torch.long)
+        edges = cells[:, pairs].reshape(-1, 2)
+        # Add reverse edges for undirected connectivity
+        edges_rev = edges[:, [1, 0]]
+        edge_index = torch.cat([edges, edges_rev], dim=0).T
+        return edge_index
 
 
     def __next__(self):
@@ -147,29 +177,34 @@ class FPC(IterableDataset):
     def __init__(self, max_epochs, dataset_dir, split='train') -> None:
 
         super().__init__()
-
-        dataset_dir = osp.join(dataset_dir, split+'.h5')
-        self.max_epochs= max_epochs
-        self.dataset_dir = dataset_dir
-        assert os.path.isfile(dataset_dir), '%s not exist' % dataset_dir
-        self.file_handle = h5py.File(dataset_dir, "r")
-        print('Dataset '+  self.dataset_dir + ' Initilized')
+        dataset_path = osp.join(dataset_dir, split+'.h5')
+        self.max_epochs = max_epochs
+        self.dataset_path = dataset_path
+        assert os.path.isfile(dataset_path), f'{dataset_path} does not exist'
+        self.file_handle = h5py.File(dataset_path, "r")
+        print(f'Dataset {self.dataset_path} initialized')
 
     def __iter__(self):
         worker_info = torch.utils.data.get_worker_info()
+        keys = list(self.file_handle.keys())
+
         if worker_info is None:
             iter_start = 0
-            iter_end = len(self.file_handle)
+            iter_end = len(keys)
         else:
-            per_worker = int(math.ceil(len(self.file_handle)/float(worker_info.num_workers)))
+            per_worker = int(math.ceil(len(keys) / float(worker_info.num_workers)))
             worker_id = worker_info.id
             iter_start = worker_id * per_worker
-            iter_end = min(iter_start + per_worker, len(self.file_handle))
+            iter_end = min(iter_start + per_worker, len(keys))
 
-        keys = list(self.file_handle.keys())
         keys = keys[iter_start:iter_end]
+
+        # Combine all files for this worker and return a single FPCBase iterator
         files = {k: self.file_handle[k] for k in keys}
-        return FPCBase(max_epochs=self.max_epochs, files=files)
+        fpc_base = FPCBase(max_epochs=self.max_epochs, files=files)
+        for graph in fpc_base:
+            yield graph  # yields a full graph object with x, y, pos, edge_index
+
 
 
 class FPC_ROLLOUT(IterableDataset):
