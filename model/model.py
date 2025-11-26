@@ -1,11 +1,18 @@
 import torch.nn as nn
 from .blocks import EdgeBlock, NodeBlock
-from utils.utils import decompose_graph, copy_geometric_data
 from torch_geometric.data import Data
 
 def build_mlp(in_size, hidden_size, out_size, lay_norm=True):
 
-    module = nn.Sequential(nn.Linear(in_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, out_size))
+    module = nn.Sequential(
+        nn.Linear(in_size, hidden_size), 
+        nn.ReLU(),
+        nn.Linear(hidden_size, hidden_size),
+        nn.ReLU(),
+        nn.Linear(hidden_size, hidden_size),
+        nn.ReLU(),
+        nn.Linear(hidden_size, out_size)
+    )
     if lay_norm: return nn.Sequential(module,  nn.LayerNorm(normalized_shape=out_size))
     return module
 
@@ -23,7 +30,7 @@ class Encoder(nn.Module):
     
     def forward(self, graph):
 
-        node_attr, _, edge_attr, _ = decompose_graph(graph)
+        node_attr, edge_attr = graph.x, graph.edge_attr
         node_ = self.nb_encoder(node_attr)
         edge_ = self.eb_encoder(edge_attr)
         
@@ -48,11 +55,15 @@ class GnBlock(nn.Module):
 
     def forward(self, graph):
     
-        graph_last = copy_geometric_data(graph)
+        x = graph.x.clone()
+        edge_attr = graph.edge_attr.clone()
+
         graph = self.eb_module(graph)
         graph = self.nb_module(graph)
-        edge_attr = graph_last.edge_attr + graph.edge_attr
-        x = graph_last.x + graph.x
+
+        x = x + graph.x
+        edge_attr = edge_attr + graph.edge_attr
+        
         return Data(x=x, edge_attr=edge_attr, edge_index=graph.edge_index)
 
 

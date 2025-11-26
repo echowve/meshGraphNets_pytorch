@@ -1,48 +1,25 @@
-from dataset import FPC_ROLLOUT
-from torch_geometric.loader import DataLoader
-import torch
 import argparse
-from tqdm import tqdm
-import pickle
-import torch_geometric.transforms as T
-from utils.utils import NodeType
-import numpy as np
-from model.simulator import Simulator
-from tqdm import tqdm
 import os
+import pickle
 
+import numpy as np
+import torch
+from torch_geometric.loader import DataLoader
+import torch_geometric.transforms as T
+from tqdm import tqdm
 
-parser = argparse.ArgumentParser(description='Implementation of MeshGraphNets')
-parser.add_argument("--gpu",
-                    type=int,
-                    default=0,
-                    help="gpu number: 0 or 1")
-
-parser.add_argument("--model_dir",
-                    type=str,
-                    default='checkpoint/simulator.pth')
-
-parser.add_argument("--test_split", type=str, default='test')
-parser.add_argument("--rollout_num", type=int, default=1)
-
-args = parser.parse_args()
-
-# gpu devices
-torch.cuda.set_device(args.gpu)
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+from dataset import FPC_ROLLOUT
+from model.simulator import Simulator
+from utils.utils import NodeType
 
 def rollout_error(predicteds, targets):
-
     number_len = targets.shape[0]
     squared_diff = np.square(predicteds - targets).reshape(number_len, -1)
     loss = np.sqrt(np.cumsum(np.mean(squared_diff, axis=1), axis=0)/np.arange(1, number_len+1))
-
     for show_step in range(0, 1000000, 50):
         if show_step <number_len:
             print('testing rmse  @ step %d loss: %.2e'%(show_step, loss[show_step]))
         else: break
-
     return loss
 
 
@@ -89,14 +66,33 @@ def rollout(model, dataloader, rollout_index=1):
 
 if __name__ == '__main__':
 
+    parser = argparse.ArgumentParser(description='Implementation of MeshGraphNets')
+    parser.add_argument("--gpu",
+                        type=int,
+                        default=0,
+                        help="gpu number: 0 or 1")
+
+    parser.add_argument("--model_dir",
+                        type=str,
+                        default='checkpoint/simulator.pth')
+
+    parser.add_argument("--test_split", type=str, default='test')
+    parser.add_argument("--rollout_num", type=int, default=1)
+
+    args = parser.parse_args()
+
+    # load model
+    torch.cuda.set_device(args.gpu)
+    device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
     simulator = Simulator(message_passing_num=15, node_input_size=11, edge_input_size=3, device=device)
     simulator.load_checkpoint()
     simulator.eval()
 
+    # prepare dataset
     dataset_dir = "/home/jlx/dataset/data"
     dataset = FPC_ROLLOUT(dataset_dir, split=args.test_split)
     transformer = T.Compose([T.FaceToEdge(), T.Cartesian(norm=False), T.Distance(norm=False)])
-    test_loader = DataLoader(dataset=dataset, batch_size=1)
+    test_loader = DataLoader(dataset=dataset, batch_size=1)  # type: ignore
 
     for i in range(args.rollout_num):
         result = rollout(simulator, test_loader, rollout_index=i)

@@ -1,16 +1,16 @@
-from torch.utils.data import IterableDataset
-import os, numpy as np
-import os.path as osp
-import h5py
-from torch_geometric.data import Data
-import torch
 import math
-import time
+import os
+import os.path as osp
+
+import h5py
+import numpy as np
+import torch
+from torch.utils.data import IterableDataset
+from torch_geometric.data import Data
 
 class FPCBase():
 
-    def __init__(self, max_epochs=1, files=None):
-
+    def __init__(self, files:dict, max_epochs=1):
 
         self.open_tra_num = 10
         self.file_handle=files
@@ -48,7 +48,7 @@ class FPCBase():
 
             if self.check_if_epcho_end():
                 self.epcho_end()
-                print('Epcho Finished')
+                print('Data loading: Epcho Finished')
     
     def check_and_close_tra(self):
         to_del = []
@@ -64,8 +64,6 @@ class FPCBase():
             except Exception as e:
                 print(e)
                 
-
-
     def shuffle_file(self):
         datasets = list(self.file_handle.keys())
         np.random.shuffle(datasets)
@@ -88,11 +86,6 @@ class FPCBase():
         node_attr = np.hstack((datas[1], datas[2][0], datas[4][0], time_vector))
         "node_type, cur_v, pressure, time"
         crds = torch.as_tensor(datas[0], dtype=torch.float)
-        # senders = edge_index[0].numpy()
-        # receivers = edge_index[1].numpy()
-        # crds_diff = crds[senders] - crds[receivers]
-        # crds_norm = np.linalg.norm(crds_diff, axis=1, keepdims=True)
-        # edge_attr = np.concatenate((crds_diff, crds_norm), axis=1)
 
         target = datas[2][1]
         #node_type, cur_v, pressure, time
@@ -101,7 +94,6 @@ class FPCBase():
         target = torch.from_numpy(target)
         face = torch.as_tensor(datas[3].T, dtype=torch.long)
         g = Data(x=node_attr, face=face, y=target, pos=crds)
-        # g = Data(x=node_attr, edge_index=edge_index, edge_attr=edge_attr, y=target, pos=crds)
         return g
 
 

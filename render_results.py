@@ -1,13 +1,14 @@
-import pickle
+
+import os
+
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-import matplotlib.tri as tri
-import cv2
-import PIL.Image as Image
+from PIL import Image
+import pickle
 from tqdm import tqdm
-import datetime
 import glob
-import os
+import matplotlib.tri as tri
 
 def fig2data(fig):
     """
