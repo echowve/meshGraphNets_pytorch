@@ -85,7 +85,7 @@ if __name__ == '__main__':
     # load model
     torch.cuda.set_device(args.gpu)
     device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-    simulator = Simulator(message_passing_num=5, node_input_size=11, edge_input_size=3, device=device)
+    simulator = Simulator(message_passing_num=15, node_input_size=11, edge_input_size=3, device=device)
 
     state_dict  = torch.load(args.model_dir, weights_only=False)
     simulator.load_state_dict(state_dict['model_state_dict'])
