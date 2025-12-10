@@ -86,7 +86,7 @@ def evaluate(model: Simulator, dataloader, transformer, device):
 
 if __name__ == '__main__':
     # 加载训练和验证数据集
-    train_dataset = FpcDataset(data_root=dataset_dir, split='valid')
+    train_dataset = FpcDataset(data_root=dataset_dir, split='train')
     valid_dataset = FpcDataset(data_root=dataset_dir, split='valid')
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
