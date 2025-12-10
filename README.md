@@ -20,20 +20,11 @@ Some code of this repository refer to [Differentiable Physics-informed Graph Net
 
 
 ## Requirements
------------------------
-  - h5py==3.6.0
-  - matplotlib==3.4.3
-  - numpy==1.21.1
-  - opencv_python==4.5.4.58
-  - Pillow==9.1.0
-  - torch==1.9.0+cu111
-  - torch_geometric==2.0.4
-  - torch_scatter==2.0.8
-  - tqdm==4.62.3
+----------------------
 
-  ``` bash
-  pip install -r requirements.txt
-  ```
+``` bash
+pip install -r requirements.txt
+```
 
 ## Sample usage
 -----------------------
