@@ -1,5 +1,4 @@
-import os
-from typing import Optional
+import torch.nn.init as init
 
 import torch.nn as nn
 import torch
@@ -8,6 +7,12 @@ from torch_geometric.data import Data
 from .model import EncoderProcesserDecoder
 from utils import normalization
 
+def init_weights(m):
+    if isinstance(m, nn.Linear):
+        init.xavier_uniform_(m.weight)
+        if m.bias is not None:
+            init.zeros_(m.bias)
+
 class Simulator(nn.Module):
     def __init__(
         self,
@@ -15,13 +20,11 @@ class Simulator(nn.Module):
         node_input_size: int,
         edge_input_size: int,
         device: str,
-        model_dir: str = 'checkpoint/simulator.pth'
     ) -> None:
         super(Simulator, self).__init__()
 
         self.node_input_size = node_input_size
         self.edge_input_size = edge_input_size
-        self.model_dir = model_dir
 
         self.model = EncoderProcesserDecoder(
             message_passing_num=message_passing_num,
@@ -35,7 +38,11 @@ class Simulator(nn.Module):
         self._node_normalizer = normalization.Normalizer(
             size=node_input_size, name='node_normalizer', device=device
         )
+        self.edge_normalizer = normalization.Normalizer(
+            size=edge_input_size, name='edge_normalizer', device=device
+        )
 
+        self.model.apply(init_weights)
         print('Simulator model initialized')
 
     def update_node_attr(self, frames: torch.Tensor, types: torch.Tensor) -> torch.Tensor:
@@ -84,11 +91,16 @@ class Simulator(nn.Module):
             noised_frames = frames + velocity_sequence_noise  # [N, 2]
             node_attr = self.update_node_attr(noised_frames, node_type)
             graph.x = node_attr
+
+            edge_attr = graph.edge_attr  # [E, 3]
+            edge_attr = self.edge_normalizer(edge_attr, self.training)
+            graph.edge_attr = edge_attr
+
             predicted_acc_norm = self.model(graph)  # [N, 2]
 
             target_vel = graph.y  # [N, 2]
             target_acc = self.velocity_to_acceleration(noised_frames, target_vel) # type: ignore
-            target_acc_norm = self._output_normalizer(target_acc, True)
+            target_acc_norm = self._output_normalizer(target_acc, self.training)
 
             return predicted_acc_norm, target_acc_norm
 
@@ -96,29 +108,12 @@ class Simulator(nn.Module):
             # Inference mode
             node_attr = self.update_node_attr(frames, node_type)
             graph.x = node_attr
+            
+            edge_attr = graph.edge_attr  # [E, 3]
+            edge_attr = self.edge_normalizer(edge_attr, self.training)
+            graph.edge_attr = edge_attr
+            
             predicted_acc_norm = self.model(graph)  # [N, 2]
             acc_update = self._output_normalizer.inverse(predicted_acc_norm)  # [N, 2]
             predicted_velocity = frames + acc_update
             return predicted_velocity
-
-    def load_checkpoint(self, ckpdir: Optional[str] = None) -> None:
-        """
-        Load model weights and normalizer states from checkpoint.
-        """
-        ckpdir = ckpdir or self.model_dir
-        state_dict = torch.load(ckpdir, map_location=torch.device('cpu'))
-        self.load_state_dict(state_dict, strict=True)
-
-        print(f"Simulator model loaded from {ckpdir}")
-
-    def save_checkpoint(self, savedir: Optional[str] = None) -> None:
-        """
-        Save model weights and normalizer states to checkpoint.
-        """
-        savedir = savedir or self.model_dir
-        os.makedirs(os.path.dirname(savedir), exist_ok=True)
-        
-        state_dict = self.state_dict() # contains normalizer states
-        torch.save(state_dict, savedir)
-
-        print(f'Simulator model saved at {savedir}')

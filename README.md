@@ -37,13 +37,17 @@ Some code of this repository refer to [Differentiable Physics-informed Graph Net
 
 ## Sample usage
 -----------------------
+- Download the dataset using:
+```bash
 
-- Download `cylinder_flow` dataset using the script https://github.com/deepmind/deepmind-research/blob/master/meshgraphnets/download_dataset.sh.
+aria2c -x 8 -s 8 https://storage.googleapis.com/dm-meshgraphnets/cylinder_flow/train.tfrecord -d data
 
-- Parse the downloaded dataset into `.h5` file using the tool [parse_tfrecord.py](./parse_tfrecord.py)
-- Change the `dataset_dir` in [train.py](./train.py) to your `.h5` files.
+aria2c -x 8 -s 8 https://storage.googleapis.com/dm-meshgraphnets/cylinder_flow/test.tfrecord -d data
+
+aria2c -x 8 -s 8 https://storage.googleapis.com/dm-meshgraphnets/cylinder_flow/valid.tfrecord -d data
+```
+- Parse the downloaded dataset using the tool [parse_tfrecord.py](./parse_tfrecord.py), and the parsed files will be saved at `data` folder. Notice that the tensorflow version should lower than 1.15.0.
 - train the model by run `python train.py`.
-
 - For test, run `rollout.py`, and the result pickle file will be saved at result folder, the you can run the [render_results.py](./render_results.py) to generate result videos that can be saved at videos folder.
   
 ## Demos

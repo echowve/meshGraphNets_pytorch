@@ -2,16 +2,22 @@
 '''
 @File    :   parse_tfrecord.py
 @Author  :   jianglx 
-@Version :   1.0
+@Version :   2.0
 @Contact :   jianglx@whu.edu.cn
 '''
-#解析tfrecord解析数据，存为hdf5文件
 import tensorflow as tf
 import functools
 import json
 import os
 import numpy as np
-import h5py
+from packaging import version
+
+
+if version.parse(tf.__version__) >= version.parse("1.15"):
+    raise RuntimeError(
+        f"当前 TensorFlow 版本为 {tf.__version__}，但本项目要求 tensorflow<1.15。"
+        "请在其他环境安装TensorFlow：pip install 'tensorflow<1.15'"
+    )
 
 def _parse(proto, meta):
   """Parses a trajectory from tf.Example."""
@@ -35,39 +41,87 @@ def _parse(proto, meta):
 
 
 def load_dataset(path, split):
-  """Load dataset."""
-  with open(os.path.join(path, 'meta.json'), 'r') as fp:
-    meta = json.loads(fp.read())
-  ds = tf.data.TFRecordDataset(os.path.join(path, split+'.tfrecord'))
-  ds = ds.map(functools.partial(_parse, meta=meta), num_parallel_calls=8)
-  ds = ds.prefetch(1)
-  return ds
+    """Load dataset."""
+    with open(os.path.join(path, 'meta.json'), 'r') as fp:
+      meta = json.loads(fp.read())
+    ds = tf.data.TFRecordDataset(os.path.join(path, split+'.tfrecord'))
+    ds = ds.map(functools.partial(_parse, meta=meta), num_parallel_calls=1)
+    ds = ds.prefetch(1)
+    return ds
 
 
 if __name__ == '__main__':
-    tf.enable_resource_variables()
-    tf.enable_eager_execution()
+    
+    tf_datasetPath = 'data'
 
-    tf_datasetPath='data/cylinder_flow'
-    os.makedirs('/mnt/Data/jlx/phygraph/datapkls/', exist_ok=True)
+    tf.enable_resource_variables() # type: ignore
+    tf.enable_eager_execution() # type: ignore
 
     for split in ['train', 'test', 'valid']:
         ds = load_dataset(tf_datasetPath, split)
-        save_path='/mnt/Data/jlx/phygraph/datapkls/'+ split  +'.h5'
-        f = h5py.File(save_path, "w")
-        print(save_path)
 
+        all_pos = []
+        all_node_type = []
+        all_velocity = []
+        all_cells = []
+        filename = os.path.join(tf_datasetPath, split+'.dat')
+
+        shape0, shape1 = 0, 0
         for index, d in enumerate(ds):
-            pos = d['mesh_pos'].numpy()
-            node_type = d['node_type'].numpy()
+           velocity = d['velocity'].numpy()
+           velocity = velocity.transpose(1, 0, 2) 
+           N, T, D = velocity.shape
+           shape0 += N
+           shape1 = max(shape1, T)
+           del velocity
+        
+        fp = np.memmap(filename, dtype='float32', mode='w+', shape=(shape0, shape1, 2))
+
+        write_shift  = 0
+        for index, d in enumerate(ds):
+            pos_ = d['mesh_pos'].numpy()
+            node_type_ = d['node_type'].numpy()
             velocity = d['velocity'].numpy()
-            cells = d['cells'].numpy()
-            pressure = d['pressure'].numpy()
-            data = ("pos", "node_type", "velocity", "cells", "pressure")
-            # d = f.create_dataset(str(index), (len(data), ), dtype=pos.dtype)
-            g = f.create_group(str(index))
-            for k in data:
-             g[k] = eval(k)
+            cells_ = d['cells'].numpy()
+
+            pos = pos_[0].copy() # same for all time steps,  step 0 only
+            node_type = node_type_[0].copy() # same for all time steps,  step 0 only
+            cells = cells_[0].copy() # same for all time steps,  step 0 only
+            del pos_ # memory efficient operation
+            del node_type_ # memory efficient operation
+            del cells_ # memory efficient operation
+
+            print(pos.shape, node_type.shape, velocity.shape, cells.shape)
+          
+            all_pos.append(pos)
+            all_node_type.append(node_type)
+            all_cells.append(cells)
             
-            print(index)
-        f.close()
+            velocity = velocity.transpose(1, 0, 2)
+            fp[write_shift:write_shift+velocity.shape[0]] = velocity
+
+            fp.flush()
+            write_shift += velocity.shape[0]
+            del velocity
+        del fp
+
+        indices = [i.shape[0] for i in all_pos]
+        indices = np.cumsum(indices)
+        indices = np.insert(indices, 0, 0)
+
+        cindices = [i.shape[0] for i in all_cells]
+        cindices = np.cumsum(cindices)
+        cindices = np.insert(cindices, 0, 0)
+
+        all_pos = np.concatenate(all_pos, axis=0)
+        all_node_type = np.concatenate(all_node_type, axis=0)
+        all_cells = np.concatenate(all_cells, axis=0)
+
+        np.savez_compressed(os.path.join(tf_datasetPath, split+'.npz'),
+                            pos=all_pos,
+                            node_type=all_node_type,
+                            cells=all_cells,
+                            indices=indices,
+                            cindices=cindices,
+                            all_velocity_shape=(shape0, shape1, 2)
+        )

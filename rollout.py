@@ -8,7 +8,7 @@ from torch_geometric.loader import DataLoader
 import torch_geometric.transforms as T
 from tqdm import tqdm
 
-from dataset import FPC_ROLLOUT
+from dataset import FpcDataset
 from model.simulator import Simulator
 from utils.utils import NodeType
 
@@ -24,17 +24,17 @@ def rollout_error(predicteds, targets):
 
 
 @torch.no_grad()
-def rollout(model, dataloader, rollout_index=1):
+def rollout(model, dataset, rollout_index=1):
 
-    dataset.change_file(rollout_index)
-
+    num_sampes_per_tra = dataset.num_sampes_per_tra
     predicted_velocity = None
     mask=None
     predicteds = []
     targets = []
 
-    for graph in tqdm(dataloader, total=600):
-
+    for i in range(num_sampes_per_tra):
+        index = rollout_index * num_sampes_per_tra + i
+        graph = dataset[index]
         graph = transformer(graph)
         graph = graph.cuda()
 
@@ -47,7 +47,8 @@ def rollout(model, dataloader, rollout_index=1):
             graph.x[:, 1:3] = predicted_velocity.detach()
         
         next_v = graph.y
-        predicted_velocity = model(graph, velocity_sequence_noise=None)
+        with torch.no_grad():
+            predicted_velocity = model(graph, velocity_sequence_noise=None)
 
         predicted_velocity[mask] = next_v[mask]
 
@@ -74,7 +75,7 @@ if __name__ == '__main__':
 
     parser.add_argument("--model_dir",
                         type=str,
-                        default='checkpoint/simulator.pth')
+                        default='checkpoints/best_model.pth')
 
     parser.add_argument("--test_split", type=str, default='test')
     parser.add_argument("--rollout_num", type=int, default=1)
@@ -84,18 +85,19 @@ if __name__ == '__main__':
     # load model
     torch.cuda.set_device(args.gpu)
     device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-    simulator = Simulator(message_passing_num=15, node_input_size=11, edge_input_size=3, device=device)
-    simulator.load_checkpoint()
+    simulator = Simulator(message_passing_num=5, node_input_size=11, edge_input_size=3, device=device)
+
+    state_dict  = torch.load(args.model_dir, weights_only=False)
+    simulator.load_state_dict(state_dict['model_state_dict'])
     simulator.eval()
 
     # prepare dataset
-    dataset_dir = "/home/jlx/dataset/data"
-    dataset = FPC_ROLLOUT(dataset_dir, split=args.test_split)
+    dataset_dir = "data"
+    dataset = FpcDataset(dataset_dir, split=args.test_split)
     transformer = T.Compose([T.FaceToEdge(), T.Cartesian(norm=False), T.Distance(norm=False)])
-    test_loader = DataLoader(dataset=dataset, batch_size=1)  # type: ignore
 
     for i in range(args.rollout_num):
-        result = rollout(simulator, test_loader, rollout_index=i)
+        result = rollout(simulator, dataset, rollout_index=i)
         print('------------------------------------------------------------------')
         rollout_error(result[0], result[1])
 

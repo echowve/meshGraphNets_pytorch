@@ -1,5 +1,6 @@
 data/
-checkpoint/
+checkpoints/
+.marscode/
 *.pyc
 .vscode/
 *.log
@@ -14,4 +15,5 @@ log/
 *.zip
 *.pyc
 *.log
+runs/
 __pycache__/

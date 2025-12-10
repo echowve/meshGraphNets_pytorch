@@ -48,7 +48,7 @@ for index, file in enumerate(result_files):
     fourcc = cv2.VideoWriter_fourcc(*'XVID')  # 保存视频的编码
     out = cv2.VideoWriter(file_name, fourcc, 20.0, (1700,800))
 
-    r_t = result[0][:, 0]
+    r_t = result[1]
 
     v_max = np.max(r_t)
     v_min = np.min(r_t)
@@ -63,11 +63,8 @@ for index, file in enumerate(result_files):
         predicted = result[0][step]
 
         fig, axes = plt.subplots(2, 1, figsize=(17, 8))
-
         target_v = np.linalg.norm(target, axis=-1)
         predicted_v = np.linalg.norm(predicted,axis=-1)
-
-        # diff = np.linalg.norm(target - predicted, axis=-1)
         
         for ax in axes:
             ax.cla()
@@ -75,14 +72,11 @@ for index, file in enumerate(result_files):
 
         handle1 = axes[0].tripcolor(triang, target_v, vmax=v_max, vmin=v_min)
         axes[1].tripcolor(triang, predicted_v, vmax=v_max, vmin=v_min)
-        # handle2 = axes[2].tripcolor(triang, diff, vmax=1, vmin=0)
 
 
         axes[0].set_title('Target\nTime @ %.2f s'%(step*0.01))
         axes[1].set_title('Prediction\nTime @ %.2f s'%(step*0.01))
-        # axes[2].set_title('Difference\nTime @ %.2f s'%(step*0.01))
-        colorbar1 = fig.colorbar(handle1, ax=[axes[0], axes[1]])
-        # colorbar2 = fig.colorbar(handle2, ax=axes[2])
+        fig.colorbar(handle1, ax=[axes[0], axes[1]])
 
         img = fig2data(fig)[:, :, :3]
         img = cv2.resize(img, (1700, 800))
